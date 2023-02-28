@@ -29,6 +29,16 @@ data
     ├── corpus.htm
 ```
 
+Afterwards to preprocess the data run:
+
+```bash
+python scripts/preprocess.py
+```
+
+This should create a `data/doec_processed` folder with the preprocessed data in parquet format. The data can be loaded using the `DOEC` class in `text_anomalies.dataloader`. Or just using `pandas.read_parquet`.
+
+To get started with the model you can have a look at the `notebooks/DOEC.ipynb` notebook. This notebook contains the code to train the model and run some light analysis.
+
 ## Orientation
 
 The project is structured as follows:
@@ -41,7 +51,7 @@ The project is structured as follows:
 │   └── models # folder for the trained models
 ├── text_anomalies # folder for source code
 │   ├── dataloader # code for dataloader and preprocessing
-│   └── models # code for models
+│   └── models # code for the torch modules
 ├── notebooks # folder for notebooks
 ├── scripts # folder for scripts
 ├── README.md # <- you are here

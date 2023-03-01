@@ -17,16 +17,17 @@ pip install .
 
 Sadly I'm not allowed to share the dataset used (DOEC). But you can download it [here](http://hdl.handle.net/20.500.12024/2488) or use your own dataset. You have to do this first before you can run the code.
 
-Once downloaded you have to extract and place inside the `data/doec_raw` folder. The folder structure should look like this:
+Once downloaded you have to extract and place inside the `data/doec/raw` folder. The folder structure should look like this:
 
 ```bash
 data
-└── doec_raw
-    ├── doc
-    ├── html
-    ├── images
-    ├── sgml-corpus
-    ├── corpus.htm
+└── doec
+    └── raw
+        ├── doc
+        ├── html
+        ├── images
+        ├── sgml-corpus
+        └── corpus.htm
 ```
 
 Afterwards to preprocess the data run:
@@ -45,10 +46,11 @@ The project is structured as follows:
 
 ```bash
 ├── data # folder for data
-│   ├── doec_raw # folder for raw data
-│   ├── doec_processed # folder for raw data
-│   ├── tokenizers # folder for pretrained tokenizers
-│   └── models # folder for the trained models
+│   ├── doec
+│   │   ├── raw # folder for raw data
+│   │   ├── tokenizer # folder for tokenizer
+│   │   └── doec.parquet # preprocessed data
+│   └── models # folder for the pretrained models
 ├── text_anomalies # folder for source code
 │   ├── dataloader # code for dataloader and preprocessing
 │   └── models # code for the torch modules

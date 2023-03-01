@@ -4,7 +4,6 @@ from typing import Optional
 import pandas as pd
 from torch.utils.data import DataLoader
 from pytorch_lightning import LightningDataModule
-from transformers import PreTrainedTokenizerFast
 
 from .tokenizer import create_and_train_tokenizer
 from .dataset import DOECDataset

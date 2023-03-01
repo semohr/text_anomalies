@@ -7,11 +7,11 @@ from tokenizers import (
     pre_tokenizers,
     trainers,
     decoders,
-    PreTrainedTokenizerFast,
 )
+from transformers import PreTrainedTokenizerFast
 
 
-def create_and_train_tokenizer(iterator: Iterator[str]) -> Tokenizer:
+def create_and_train_tokenizer(iterator: Iterator[str]) -> PreTrainedTokenizerFast:
     """
     Create a tokenizer from an iterator of text. The tokenizer is trained on the text using The WordPieceTraining algorithm. We also add special tokens to the tokenizer, namely [UNK], [PAD], [CLS], [SEP], [MASK].
     """
@@ -39,8 +39,8 @@ def create_and_train_tokenizer(iterator: Iterator[str]) -> Tokenizer:
 
     tokenizer = PreTrainedTokenizerFast(
         tokenizer_object=tokenizer,
-        pad_token="[PAD]",
         unk_token="[UNK]",
+        pad_token="[PAD]",
     )
 
     return tokenizer

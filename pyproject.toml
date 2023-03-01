@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "text_anomalies"
-version = "0.1.0"
+version = "0.2.0"
 authors = [
     { name = "Sebastian B. Mohr", email = "sebastian.mohr@stud.uni-goettingen.de" },
 ]
@@ -18,12 +18,12 @@ classifiers = [
 ]
 dependencies = [
     "torch",
-    "torchdata",
-    "torchtext",
-    "pandas",
-    "pre-commit",
-    "fastprogress",
-    "datasets",
-    "transformers",
+    "pytorch-lightning",
+    "ray[tune]",
     "tokenizers",
+    "transformers",
+    "pandas",
+
+    # Repo management
+    "pre-commit",
 ]

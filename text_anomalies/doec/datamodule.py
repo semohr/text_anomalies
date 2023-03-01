@@ -2,10 +2,12 @@ import pathlib
 import os
 from typing import Optional
 import pandas as pd
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 from pytorch_lightning import LightningDataModule
+from transformers import PreTrainedTokenizerFast
 
 from .tokenizer import create_and_train_tokenizer
+from .preprocess import preprocess_data
 from .dataset import DOECDataset
 
 
@@ -46,7 +48,8 @@ class DOECDataModule(LightningDataModule):
         # Check if "doec.parquet" file exists
         if not os.path.exists(self.data_dir / "doec.parquet"):
             # Create parquet file
-            pass
+            data = preprocess_data(self.data_dir_raw)
+            data.to_parquet(self.data_dir / "doec.parquet")
 
         # Check if tokenizer is present
         if not os.path.exists(self.data_dir / "tokenizer") or not os.path.exists(
@@ -60,17 +63,24 @@ class DOECDataModule(LightningDataModule):
     def setup(self, stage: Optional[str] = None):
         """
         Split the data into train, validation and test sets.
-        # TODO
         """
-        # Load data and tokenizer
+        # Load data, tokenizer and create dataset
         self.data = pd.read_parquet(self.data_dir / "doec.parquet")
         self.tokenizer = PreTrainedTokenizerFast.from_pretrained(
             self.data_dir / "tokenizer"
         )
 
+        self.dataset = DOECDataset(
+            self.data,
+            self.tokenizer,
+        )
+        # Split dataset
+        split = [0.8, 0.18, 0.02]
+        self.train_ds, self.val_ds, self.test_ds = self.dataset.split(split)
+
     def train_dataloader(self):
         return DataLoader(
-            dataset=DOECDataset(self.train_df, self.tokenizer),
+            dataset=self.train_ds,
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=True,
@@ -78,7 +88,7 @@ class DOECDataModule(LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            dataset=DOECDataset(self.val_df, self.tokenizer),
+            dataset=self.val_ds,
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=False,
@@ -86,7 +96,7 @@ class DOECDataModule(LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(
-            dataset=DOECDataset(self.test_df, self.tokenizer),
+            dataset=self.test_ds,
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=False,

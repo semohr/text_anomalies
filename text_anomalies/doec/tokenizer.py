@@ -21,10 +21,10 @@ def create_and_train_tokenizer(iterator: Iterator[str]) -> PreTrainedTokenizerFa
         [normalizers.Lowercase(), normalizers.NFKD()]
     )
 
-    # 2. Pre-tokenization
+    # Pre-tokenization
     tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
 
-    # 3. Model
+    # Model
     # e.g., the tokenization or merging of characters or sub-words into larger logical components.
     trainer = trainers.WordPieceTrainer(
         vocab_size=30_000,

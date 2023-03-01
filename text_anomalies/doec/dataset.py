@@ -1,11 +1,12 @@
 import pandas as pd
 from torch.utils.data import Dataset
+from transformers import PreTrainedTokenizerFast
 
 
-class OldEnglishDataset(Dataset):
+class DOECDataset(Dataset):
     """Dataset wrapper for the Dictionary of Old English Corpus"""
 
-    def __init__(self, data: pd.DataFrame, tokenizer: DOECTokenizer):
+    def __init__(self, data: pd.DataFrame, tokenizer: PreTrainedTokenizerFast):
         """
         Parameters
         ----------
@@ -31,10 +32,8 @@ class OldEnglishDataset(Dataset):
             return_tensors="pt",
             return_attention_mask=False,
         )
-
+        labels = "TODO"
         return {
             "input_ids": encoding["input_ids"].flatten(),
-            "attention_mask": encoding["attention_mask"].flatten(),
-            "labels": "TODO"
+            "labels": labels,
         }
-

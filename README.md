@@ -52,7 +52,7 @@ The project is structured as follows:
 │   │   └── doec.parquet # preprocessed data
 │   └── models # folder for the pretrained models
 ├── text_anomalies # folder for source code
-│   ├── dataloader # code for dataloader and preprocessing
+│   ├── doec # code for everything data related
 │   └── models # code for the torch modules
 ├── notebooks # folder for notebooks
 ├── scripts # folder for scripts

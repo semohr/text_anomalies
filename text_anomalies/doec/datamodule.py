@@ -9,6 +9,7 @@ from transformers import PreTrainedTokenizerFast
 from .tokenizer import create_and_train_tokenizer
 from .preprocess import preprocess_data
 from .dataset import DOECDataset
+from .preprocess import preprocess_data
 
 
 class DOECDataModule(LightningDataModule):
@@ -48,7 +49,7 @@ class DOECDataModule(LightningDataModule):
         # Check if "doec.parquet" file exists
         if not os.path.exists(self.data_dir / "doec.parquet"):
             # Create parquet file
-            data = preprocess_data(self.data_dir_raw)
+            data = preprocess_data(self.data_dir_raw / "sgml-corpus")
             data.to_parquet(self.data_dir / "doec.parquet")
 
         # Check if tokenizer is present
@@ -76,7 +77,7 @@ class DOECDataModule(LightningDataModule):
         )
         # Split dataset
         split = [0.8, 0.18, 0.02]
-        self.train_ds, self.val_ds, self.test_ds = self.dataset.split(split)
+        self.train_ds, self.val_ds, self.test_ds = random_split(self.dataset, split)
 
     def train_dataloader(self):
         return DataLoader(

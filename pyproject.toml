@@ -23,6 +23,10 @@ dependencies = [
     "tokenizers",
     "transformers",
     "pandas",
+    "tqdm",
+    "beautifulsoup4",
+    "lxml",
+    "pyarrow",
 
     # Repo management
     "pre-commit",

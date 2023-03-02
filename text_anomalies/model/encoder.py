@@ -21,7 +21,7 @@ class Encoder(nn.Module):
             num_layers=num_layers,
             batch_first=True,
             nonlinearity="tanh",
-            **rnn_kwargs
+            **rnn_kwargs,
         )
 
     def forward(self, x):

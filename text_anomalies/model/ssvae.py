@@ -1,12 +1,24 @@
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
+from typing import TypedDict
 
 from .encoder import Encoder
 from .decoder import Decoder
 from .lambd import Lambda
 
 
-class SSVAE(nn.Module):
+class SSVAEConfig(TypedDict):
+    """
+    Configuration of the self supervised variational autoencoder
+    """
+
+    embedding_size: int
+    hidden_size: int
+    latent_size: int
+
+
+class SSVAE(pl.LightningModule):
     """
     Self supervised variational autoencoder
     """
@@ -14,18 +26,17 @@ class SSVAE(nn.Module):
     def __init__(
         self,
         vocab_size: int,
-        y_size: int,
+        label_size: int,
         embedding_size: int = 300,
         hidden_size: int = 256,
         latent_size: int = 16,
-        device: str = "cpu",
     ) -> None:
         """
         Parameters
         ----------
         vocab_size : int
             The size of the vocabulary. I.e. the number of existing unique tokens.
-        y_size : int
+        label_size : int
             The size of the y vector. I.e. the number of existing unique labels.
         embedding_size : int
             The size of the embedding. Default: 300.
@@ -40,6 +51,8 @@ class SSVAE(nn.Module):
 
         # Parameters
         self.vocab_size = vocab_size
+        self.label_size = label_size
+
         self.embedding_size = embedding_size
         self.hidden_size = hidden_size
         self.latent_size = latent_size
@@ -54,7 +67,7 @@ class SSVAE(nn.Module):
             hidden_size=self.hidden_size,
         )
         self.pre_decoder = nn.Sequential(
-            nn.Linear(self.latent_size + y_size, self.hidden_size),
+            nn.Linear(self.latent_size + self.label_size, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
@@ -65,7 +78,7 @@ class SSVAE(nn.Module):
             vocab_size=self.vocab_size,
             hidden_size=self.hidden_size,
             embedding_size=self.embedding_size,
-            device=device,
+            device=self.device,
         )
 
         self.y_predict = nn.Sequential(
@@ -73,7 +86,7 @@ class SSVAE(nn.Module):
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, y_size),
+            nn.Linear(self.hidden_size, self.label_size),
         )
 
         # Hidden to latent space
@@ -176,3 +189,50 @@ class SSVAE(nn.Module):
         # ´loss=recons_loss+0.1*cat_loss+epoch*0.001*kl_loss
 
         return reconloss, catloss, kldloss
+
+    """
+    ----------------------------------------------------------------
+    Training
+    ----------------------------------------------------------------
+    """
+
+    def _common_step(self, batch, batch_idx):
+        # Get input, target and labels
+        x, x_true, y_true = batch
+
+        # Forward pass
+        x_hat, y_hat, z_mu, z_logvar = self.forward(x)
+
+        # Loss
+        reconloss, catloss, kldloss = self.loss(
+            x_hat, x_true, y_hat, y_true, z_mu, z_logvar
+        )
+
+        loss = reconloss + 0.1 * catloss + self.current_epoch * 0.001 * kldloss
+
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self._common_step(batch, batch_idx)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._common_step(batch, batch_idx)
+        self.log("val_loss", loss, on_step=True, on_epoch=True)
+        return loss
+
+    def configure_optimizers(self):
+        """
+        Configure the optimizers.
+
+        Returns
+        -------
+        optimizer : torch.optim.Optimizer
+            The optimizer.
+        """
+        optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", factor=0.2, patience=10, verbose=True, min_lr=1e-6
+        )
+        return optimizer

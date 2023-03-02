@@ -7,7 +7,7 @@ class Encoder(nn.Module):
     Encoder network containing an enrolled LSTM
     """
 
-    def __init__(self, n_features, hidden_size=256, num_layers=2, **rnn_kwargs):
+    def __init__(self, n_features, hidden_size=256, rnn_num_layers=2, **rnn_kwargs):
         super(Encoder, self).__init__()
 
         # Parameters
@@ -18,7 +18,7 @@ class Encoder(nn.Module):
         self.rnn = nn.RNN(
             input_size=self.n_features,
             hidden_size=self.hidden_size,
-            num_layers=num_layers,
+            num_layers=rnn_num_layers,
             batch_first=True,
             nonlinearity="tanh",
             **rnn_kwargs,

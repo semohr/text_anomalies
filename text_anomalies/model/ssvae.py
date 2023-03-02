@@ -30,6 +30,8 @@ class SSVAE(pl.LightningModule):
         embedding_size: int = 300,
         hidden_size: int = 256,
         latent_size: int = 16,
+        rnn_num_layers: int = 2,
+        learning_rate: float = 1e-3,
     ) -> None:
         """
         Parameters
@@ -44,8 +46,8 @@ class SSVAE(pl.LightningModule):
             The number of features in the hidden state h of the LSTM. Default: 256.
         latent_dim : int
             The dimension of the latent space. Default: 16.
-        lstm_num_layers : int
-            The number of layers in the LSTM. Default: 2.
+        rnn_num_layers : int
+            The number of layers in the Rnn. Default: 2.
         """
         super(SSVAE, self).__init__()
 
@@ -56,6 +58,8 @@ class SSVAE(pl.LightningModule):
         self.embedding_size = embedding_size
         self.hidden_size = hidden_size
         self.latent_size = latent_size
+        self.rnn_num_layers = rnn_num_layers
+        self.learning_rate = learning_rate
 
         # Layers i.e. subnetworks
         self.embedding = nn.Embedding(
@@ -65,6 +69,7 @@ class SSVAE(pl.LightningModule):
         self.encoder = Encoder(
             n_features=self.embedding_size,
             hidden_size=self.hidden_size,
+            rnn_num_layers=self.rnn_num_layers,
         )
         self.pre_decoder = nn.Sequential(
             nn.Linear(self.latent_size + self.label_size, self.hidden_size),
@@ -78,6 +83,7 @@ class SSVAE(pl.LightningModule):
             vocab_size=self.vocab_size,
             hidden_size=self.hidden_size,
             embedding_size=self.embedding_size,
+            rnn_num_layers=self.rnn_num_layers,
             device=self.device,
         )
 
@@ -210,17 +216,48 @@ class SSVAE(pl.LightningModule):
 
         loss = reconloss + 0.1 * catloss + self.current_epoch * 0.001 * kldloss
 
-        return loss
+        # Compute accuracy
+        acc_labels = self.accuracy_label(y_hat, y_true)
+        acc_seq = self.accuracy_seq(x_hat, x_true)
+
+        return loss, (acc_labels, acc_seq)
 
     def training_step(self, batch, batch_idx):
-        loss = self._common_step(batch, batch_idx)
-        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        loss, (acc_labels, acc_seq) = self._common_step(batch, batch_idx)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        loss = self._common_step(batch, batch_idx)
+        loss, (acc_labels, acc_seq) = self._common_step(batch, batch_idx)
         self.log("val_loss", loss, on_step=True, on_epoch=True)
-        return loss
+        return {
+            "val_loss": loss,
+            "acc_labels": acc_labels,
+            "acc_seq": acc_seq,
+        }
+
+    def validation_epoch_end(self, outputs):
+        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
+        avg_acc_labels = torch.stack([x["acc_labels"] for x in outputs]).mean()
+        avg_acc_seq = torch.stack([x["acc_seq"] for x in outputs]).mean()
+        self.log("val_acc_labels", avg_acc_labels, on_epoch=True, prog_bar=True)
+        self.log("val_acc_seq", avg_acc_seq, on_epoch=True, prog_bar=True)
+        self.log("val_loss", avg_loss, on_epoch=True, prog_bar=True)
+
+    def accuracy_label(self, y_hat, y):
+        """
+        Compute the accuracy for labels
+        """
+        y_hat = torch.argmax(y_hat, dim=1)
+        accuracy = torch.sum(y_hat == y).item() / len(y)
+        return accuracy
+
+    def accuracy_sequence(self, x_hat, x):
+        """
+        Compute the accuracy for sequences we ignore all padding.
+        """
+        x_hat = torch.argmax(x_hat, dim=2)
+        accuracy = torch.sum(x_hat == x).item() / torch.sum(x != 0).item()
+        return accuracy
 
     def configure_optimizers(self):
         """
@@ -231,8 +268,5 @@ class SSVAE(pl.LightningModule):
         optimizer : torch.optim.Optimizer
             The optimizer.
         """
-        optimizer = torch.optim.SGD(self.parameters(), lr=1e-3)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.2, patience=10, verbose=True, min_lr=1e-6
-        )
+        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
         return optimizer

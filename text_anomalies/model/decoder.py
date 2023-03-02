@@ -3,7 +3,15 @@ import torch.nn as nn
 
 
 class Decoder(nn.Module):
-    def __init__(self, latent_size, embedding_size, hidden_size, vocab_size, device):
+    def __init__(
+        self,
+        latent_size,
+        embedding_size,
+        hidden_size,
+        vocab_size,
+        rnn_num_layers,
+        device,
+    ):
         """
         Parameters"""
         super(Decoder, self).__init__()
@@ -14,7 +22,7 @@ class Decoder(nn.Module):
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
         self.device = device
-        self.num_layers = 2
+        self.num_layers = rnn_num_layers
 
         # Layers
         self.latent_to_hidden = nn.Linear(

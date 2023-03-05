@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
 
 
-class Decoder(nn.Module):
+class Decoder(pl.LightningModule):
     def __init__(
         self,
         latent_size,
@@ -10,7 +11,7 @@ class Decoder(nn.Module):
         hidden_size,
         vocab_size,
         rnn_num_layers,
-        device,
+        bidirectional=True,
     ):
         """
         Parameters"""
@@ -21,25 +22,38 @@ class Decoder(nn.Module):
         self.latent_size = latent_size
         self.hidden_size = hidden_size
         self.vocab_size = vocab_size
-        self.device = device
         self.num_layers = rnn_num_layers
 
         # Layers
         self.latent_to_hidden = nn.Linear(
-            self.latent_size, self.hidden_size * self.num_layers
+            self.latent_size, self.hidden_size * self.num_layers * 2
         )
-        self.rnn = nn.RNN(
+        self.latent_to_state = nn.Linear(
+            self.latent_size, self.hidden_size * self.num_layers * 2
+        )
+        self.rnn = nn.LSTM(
             input_size=self.embedding_size,
             hidden_size=self.hidden_size,
             batch_first=True,
             num_layers=self.num_layers,
-            nonlinearity="tanh",
+            bidirectional=bool(bidirectional),
+            dropout=0.1,
         )
-        self.output = nn.Linear(self.hidden_size, self.vocab_size)
+        self.output = nn.Sequential(
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
+            nn.ReLU(),
+            nn.Linear(self.hidden_size, self.vocab_size),
+        )
 
         # Initialize the weights
         torch.nn.init.xavier_uniform_(self.latent_to_hidden.weight)
-        torch.nn.init.xavier_uniform_(self.output.weight)
+        for name, param in self.rnn.named_parameters():
+            if "weight" in name:
+                torch.nn.init.xavier_uniform_(param)
+
+        for name, param in self.output.named_parameters():
+            if "weight" in name:
+                torch.nn.init.xavier_uniform_(param)
 
     def forward(self, z, seq_len):
         """
@@ -57,12 +71,16 @@ class Decoder(nn.Module):
         """
         hidden = self.latent_to_hidden(z)  # (batch_size, hidden_dim * num_layers)
         hidden = hidden.view(
-            self.num_layers, -1, self.hidden_size
-        )  # (num_layers, batch_size, hidden_dim)
+            self.num_layers*2, -1, self.hidden_size
+        )  # (num_layers*D, batch_size, hidden_dim)
+        state = self.latent_to_state(z)  # (batch_size, hidden_dim * num_layers)
+        state = state.view(
+            self.num_layers*2, -1, self.hidden_size
+        )  # (num_layers*D, batch_size, hidden_dim)
         input = torch.zeros(
             (z.shape[0], seq_len, self.embedding_size), device=self.device
         )  # (batch_size, seq_len, vocab_size )
-        output = self.rnn(input, hidden)
+        output = self.rnn(input, (hidden,state))
 
         x_hat = self.output(output[0])
 

@@ -176,4 +176,17 @@ class DOEC_raw_parser:
 def preprocess_data(folder):
 
     parser = DOEC_raw_parser(folder)
-    return parser.parse_all()
+    df = parser.parse_all()
+
+    # A Poetry
+    # B Prose
+    # C Interlinear Glosses
+    # Filter by type idno starts with A,B,C
+    masks = [df["idno"].str.startswith("A"),df["idno"].str.startswith("B"),df["idno"].str.startswith("C"),]
+
+    df = pd.concat([df[mask] for mask in masks], ignore_index=True)
+
+    # Assign id to all unique titles
+    df["title_id"] = df["title"].astype("category").cat.codes
+
+    return df

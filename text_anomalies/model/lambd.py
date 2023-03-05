@@ -7,7 +7,7 @@ class Lambda(nn.Module):
     Lambda module converts output of the encoder to latent vector
     """
 
-    def __init__(self, hidden_size, latent_size):
+    def __init__(self, hidden_size, latent_size, bidrectional_rnn=True):
         """
         Parameters
         ----------
@@ -21,10 +21,11 @@ class Lambda(nn.Module):
         # Parameters
         self.hidden_size = hidden_size
         self.latent_size = latent_size
+        D = 2 if bidrectional_rnn else 1
 
         # Layers
-        self.hidden_to_mean = nn.Linear(self.hidden_size, self.latent_size)
-        self.hidden_to_logvar = nn.Linear(self.hidden_size, self.latent_size)
+        self.hidden_to_mean = nn.Linear(D*self.hidden_size, self.latent_size)
+        self.hidden_to_logvar = nn.Linear(D*self.hidden_size, self.latent_size)
 
         # Initialize the weights
         # p(z) ~ N(0, I)

@@ -1,7 +1,7 @@
 import pandas as pd
+import torch
 from tokenizers import Tokenizer
 from torch.utils.data import Dataset
-from transformers import PreTrainedTokenizerFast
 
 
 class DOECDataset(Dataset):
@@ -24,17 +24,42 @@ class DOECDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.data.iloc[idx]
-        encoding = self.tokenizer(
-            row.text,
-            max_length=512,
-            truncation=True,
-            padding="max_length",
+
+        # One hot from title_id
+        class_idx = int(row["title_id"])
+
+        class_idx = torch.tensor(class_idx, dtype=torch.int16)
+
+        return {
+            "x": row["text"],
+            "x_true": row["text"],
+            "y_true": class_idx,
+        }
+
+
+    def collate_fn(self, data):
+        x_batch = [row["x"] for row in data]
+        x_true_batch = [row["x_true"] for row in data]
+        y_true_batch = [row["y_true"] for row in data]
+        
+        encoding_x = self.tokenizer(
+            x_batch,
+            padding="longest",
             add_special_tokens=True,
             return_tensors="pt",
             return_attention_mask=False,
         )
-        labels = "TODO"
+        encoding_x_true = self.tokenizer(
+            x_true_batch,
+            padding="longest",
+            add_special_tokens=True,
+            return_tensors="pt",
+            return_attention_mask=False,
+        )
+
         return {
-            "input_ids": encoding["input_ids"].flatten(),
-            "labels": "TODO",
+            "x": encoding_x["input_ids"].squeeze(0),
+            "x_true": encoding_x_true["input_ids"].squeeze(0),
+            "y_true": torch.stack(y_true_batch),
         }
+

@@ -39,7 +39,7 @@ class SSVAE(pl.LightningModule):
         vocab_size : int
             The size of the vocabulary. I.e. the number of existing unique tokens.
         label_size : int
-            The size of the y vector. I.e. the number of existing unique labels.
+            The size of the y vector. I.e. the number of existing unique classes.
         embedding_size : int
             The size of the embedding. Default: 300.
         hidden_dim : int
@@ -70,6 +70,7 @@ class SSVAE(pl.LightningModule):
             n_features=self.embedding_size,
             hidden_size=self.hidden_size,
             rnn_num_layers=self.rnn_num_layers,
+            bidirectional=True,
         )
         self.pre_decoder = nn.Sequential(
             nn.Linear(self.latent_size + self.label_size, self.hidden_size),
@@ -84,13 +85,11 @@ class SSVAE(pl.LightningModule):
             hidden_size=self.hidden_size,
             embedding_size=self.embedding_size,
             rnn_num_layers=self.rnn_num_layers,
-            device=self.device,
+            bidirectional=True,
         )
 
         self.y_predict = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.Linear(self.hidden_size*2, self.hidden_size),
             nn.ReLU(),
             nn.Linear(self.hidden_size, self.label_size),
         )
@@ -99,6 +98,7 @@ class SSVAE(pl.LightningModule):
         self.lambd = Lambda(
             hidden_size=self.hidden_size,
             latent_size=self.latent_size,
+            bidrectional_rnn=True,
         )
 
         # Initialize the weights
@@ -163,7 +163,7 @@ class SSVAE(pl.LightningModule):
 
         return x_hat, y_hat, z_mu, z_logvar
 
-    def loss(self, x, y):
+    def lossfn(self, x_hat, x_true, y_hat, y_true, z_mu, z_logvar):
         """
         Loss function for the model.
 
@@ -175,17 +175,13 @@ class SSVAE(pl.LightningModule):
             The input sequence of shape (batch_size, num_aux_features).
         """
 
-        # Encode the input
-        x_hat, y_hat, z_mu, z_logvar = self.forward(x)
-
         # Category Loss
-        y_hat = y_hat.log_softmax(dim=1)
-        catloss = nn.functional.cross_entropy(input=y_hat, target=y)
+        catloss = nn.functional.cross_entropy(input=y_hat, target=y_true)
 
         # Reconstruction Loss
         x_hat = x_hat.permute(0, 2, 1)  # (batch_size, vocab_size, seq_len)
         reconloss = nn.functional.nll_loss(
-            input=x_hat, target=x
+            input=x_hat, target=x_true
         )  # (batch_size, seq_len)
 
         kldloss = torch.mean(
@@ -204,26 +200,28 @@ class SSVAE(pl.LightningModule):
 
     def _common_step(self, batch, batch_idx):
         # Get input, target and labels
-        x, x_true, y_true = batch
+        x = batch["x"]
+        x_true = batch["x_true"]
+        y_true = batch["y_true"]
 
         # Forward pass
         x_hat, y_hat, z_mu, z_logvar = self.forward(x)
 
         # Loss
-        reconloss, catloss, kldloss = self.loss(
+        reconloss, catloss, kldloss = self.lossfn(
             x_hat, x_true, y_hat, y_true, z_mu, z_logvar
         )
 
         loss = reconloss + 0.1 * catloss + self.current_epoch * 0.001 * kldloss
 
-        # Compute accuracy
+        acc_seq = self.accuracy_sequence(x_hat, x_true)
         acc_labels = self.accuracy_label(y_hat, y_true)
-        acc_seq = self.accuracy_seq(x_hat, x_true)
 
         return loss, (acc_labels, acc_seq)
 
     def training_step(self, batch, batch_idx):
         loss, (acc_labels, acc_seq) = self._common_step(batch, batch_idx)
+        self.log("train_loss", loss, on_step=True, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -236,27 +234,26 @@ class SSVAE(pl.LightningModule):
         }
 
     def validation_epoch_end(self, outputs):
-        avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-        avg_acc_labels = torch.stack([x["acc_labels"] for x in outputs]).mean()
-        avg_acc_seq = torch.stack([x["acc_seq"] for x in outputs]).mean()
+        avg_loss = torch.stack([x["val_loss"].mean() for x in outputs]).mean()
+        avg_acc_labels = torch.stack([x["acc_labels"].mean() for x in outputs]).mean()
+        avg_acc_seq = torch.stack([x["acc_seq"].mean() for x in outputs]).mean()
         self.log("val_acc_labels", avg_acc_labels, on_epoch=True, prog_bar=True)
         self.log("val_acc_seq", avg_acc_seq, on_epoch=True, prog_bar=True)
         self.log("val_loss", avg_loss, on_epoch=True, prog_bar=True)
 
     def accuracy_label(self, y_hat, y):
         """
-        Compute the accuracy for labels
+        Measures the distance between the true labels and the predicted labels.
         """
-        y_hat = torch.argmax(y_hat, dim=1)
-        accuracy = torch.sum(y_hat == y).item() / len(y)
-        return accuracy
+        distance = torch.sum(torch.abs(y_hat - y), dim=1)
+        return distance
 
     def accuracy_sequence(self, x_hat, x):
         """
         Compute the accuracy for sequences we ignore all padding.
         """
         x_hat = torch.argmax(x_hat, dim=2)
-        accuracy = torch.sum(x_hat == x).item() / torch.sum(x != 0).item()
+        accuracy = torch.sum(x_hat == x, dim=1) / torch.sum(x != 0, dim=1)
         return accuracy
 
     def configure_optimizers(self):

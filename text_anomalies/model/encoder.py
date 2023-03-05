@@ -1,27 +1,29 @@
 import torch
 import torch.nn as nn
+import pytorch_lightning as pl
 
 
-class Encoder(nn.Module):
+class Encoder(pl.LightningModule):
     """
     Encoder network containing an enrolled LSTM
     """
 
-    def __init__(self, n_features, hidden_size=256, rnn_num_layers=2, **rnn_kwargs):
+    def __init__(self, n_features, hidden_size=256, rnn_num_layers=2, bidirectional=True,):
         super(Encoder, self).__init__()
 
         # Parameters
         self.n_features = n_features
         self.hidden_size = hidden_size
+        self.num_layers = rnn_num_layers
 
         # RNN layer
-        self.rnn = nn.RNN(
+        self.rnn = nn.LSTM(
             input_size=self.n_features,
             hidden_size=self.hidden_size,
-            num_layers=rnn_num_layers,
             batch_first=True,
-            nonlinearity="tanh",
-            **rnn_kwargs,
+            num_layers=self.num_layers,
+            bidirectional=bool(bidirectional),
+            dropout=0.1,
         )
 
     def forward(self, x):
@@ -40,8 +42,11 @@ class Encoder(nn.Module):
         """
 
         # Pass through the LSTM layer
-        _, h_n = self.rnn(x)
+        _ , (h_n,c_n) = self.rnn(x)
 
-        # Return the last hidden state
-        # (num_layers, batch, hidden_size)
-        return h_n[-1]
+        # Unconcat the forward and backward RNN
+        #REshape to self.num_layers, 2, batch, self.hidden_size
+        h_n = h_n.view(self.num_layers, 2, -1, self.hidden_size)
+        # Concat the forward and backward RNN
+        h_n = torch.cat((h_n[-1, 0, :, :], h_n[-1, 1, :, :]), dim=1)
+        return h_n

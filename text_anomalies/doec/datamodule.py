@@ -2,6 +2,7 @@ import pathlib
 import os
 from typing import Optional
 import pandas as pd
+import torch
 from torch.utils.data import DataLoader, random_split
 from pytorch_lightning import LightningDataModule
 from transformers import PreTrainedTokenizerFast
@@ -20,6 +21,7 @@ class DOECDataModule(LightningDataModule):
     def __init__(
         self,
         data_dir: str,
+        batch_size: int = 32,
     ):
         """
         Parameters
@@ -31,6 +33,7 @@ class DOECDataModule(LightningDataModule):
         super().__init__()
         self.data_dir = pathlib.Path(data_dir)
         self.data_dir_raw = pathlib.Path(data_dir) / "raw"
+        self.batch_size = batch_size
 
     def prepare_data(self):
         """
@@ -85,6 +88,7 @@ class DOECDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=True,
+            collate_fn=self.dataset.collate_fn,
         )
 
     def val_dataloader(self):
@@ -93,6 +97,7 @@ class DOECDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=False,
+            collate_fn=self.dataset.collate_fn,
         )
 
     def test_dataloader(self):
@@ -101,4 +106,9 @@ class DOECDataModule(LightningDataModule):
             batch_size=self.batch_size,
             num_workers=os.cpu_count(),
             shuffle=False,
+            collate_fn=self.dataset.collate_fn,
         )
+
+    @property
+    def num_classes(self):
+        return self.dataset.data["title_id"].nunique()

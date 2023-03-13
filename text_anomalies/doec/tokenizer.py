@@ -18,7 +18,7 @@ def create_and_train_tokenizer(iterator: Iterator[str]) -> PreTrainedTokenizerFa
 
     tokenizer = Tokenizer(models.WordPiece(unk_token="[UNK]"))
     tokenizer.normalizer = normalizers.Sequence(
-        [normalizers.Lowercase(), normalizers.NFKD()]
+        [normalizers.Lowercase()]
     )
 
     # Pre-tokenization

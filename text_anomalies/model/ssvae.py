@@ -5,7 +5,7 @@ from typing import TypedDict
 
 from .encoder import Encoder
 from .decoder import Decoder
-from .lambd import Lambda
+from .lambd import Lambda, LambdaDirichlet
 
 
 class SSVAEConfig(TypedDict):
@@ -31,7 +31,9 @@ class SSVAE(pl.LightningModule):
         hidden_size: int = 256,
         latent_size: int = 16,
         rnn_num_layers: int = 2,
-        learning_rate: float = 1e-3,
+        learning_rate: float = 1e-4,
+        nu1=0.1,
+        nu2=20,
     ) -> None:
         """
         Parameters
@@ -48,6 +50,12 @@ class SSVAE(pl.LightningModule):
             The dimension of the latent space. Default: 16.
         rnn_num_layers : int
             The number of layers in the Rnn. Default: 2.
+        learning_rate : float
+            The learning rate. Default: 1e-4.
+        nu1 : float
+            The first hyperparameter of the loss function.
+        nu2 : float
+            The second hyperparameter of the loss function.
         """
         super(SSVAE, self).__init__()
 
@@ -60,25 +68,33 @@ class SSVAE(pl.LightningModule):
         self.latent_size = latent_size
         self.rnn_num_layers = rnn_num_layers
         self.learning_rate = learning_rate
+        self.nu1 = nu1
+        self.nu2 = nu2
 
         # Layers i.e. subnetworks
         self.embedding = nn.Embedding(
             self.vocab_size,
             self.embedding_size,
         )
+
+        self.input_highway = nn.Sequential(
+            nn.Linear(self.embedding_size, self.embedding_size),
+            nn.ReLU(),
+            nn.Linear(self.embedding_size, int(self.embedding_size * 0.8)),
+            nn.ReLU(),
+            nn.Linear(int(self.embedding_size * 0.8), int(self.embedding_size * 0.6)),
+            nn.ReLU(),
+            nn.Linear(int(self.embedding_size * 0.6), int(self.embedding_size * 0.5)),
+            nn.ReLU(),
+        )
+
         self.encoder = Encoder(
-            n_features=self.embedding_size,
+            n_features=int(self.embedding_size * 0.5),
             hidden_size=self.hidden_size,
             rnn_num_layers=self.rnn_num_layers,
             bidirectional=True,
         )
-        self.pre_decoder = nn.Sequential(
-            nn.Linear(self.latent_size + self.label_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.hidden_size),
-            nn.ReLU(),
-            nn.Linear(self.hidden_size, self.latent_size),
-        )
+
         self.decoder = Decoder(
             latent_size=self.latent_size,
             vocab_size=self.vocab_size,
@@ -89,20 +105,19 @@ class SSVAE(pl.LightningModule):
         )
 
         self.y_predict = nn.Sequential(
-            nn.Linear(self.hidden_size*2, self.hidden_size),
+            nn.Linear(self.latent_size,  self.label_size),
             nn.ReLU(),
-            nn.Linear(self.hidden_size, self.label_size),
+            nn.Linear(self.label_size, self.label_size),
+            nn.ReLU(),
         )
 
         # Hidden to latent space
-        self.lambd = Lambda(
+        self.lambd = LambdaDirichlet(
             hidden_size=self.hidden_size,
             latent_size=self.latent_size,
             bidrectional_rnn=True,
         )
 
-        # Initialize the weights
-        torch.nn.init.xavier_uniform_(self.embedding.weight)
 
     def forward(self, x):
         """
@@ -129,6 +144,9 @@ class SSVAE(pl.LightningModule):
 
         # Embed the input
         x_embed = self.embedding(x)
+
+        # Highway network
+        x_embed = self.input_highway(x_embed)
         seq_len = x_embed.size(1)
 
         # Pack the padded sequence
@@ -145,14 +163,11 @@ class SSVAE(pl.LightningModule):
         )
 
         # Lambda i.e. Reparameterization for the latent space
-        z, z_mu, z_logvar = self.lambd(  # (batch_size, latent_size)
+        z, alpha = self.lambd(  # (batch_size, latent_size)
             h_n=h_n,
         )
 
-        y_hat = self.y_predict(h_n)
-
-        # Predecoder i.e. combining z and y
-        z = self.pre_decoder(torch.cat((z, y_hat), dim=1))
+        y_hat = self.y_predict(z)
 
         # Decoder
         x_hat = self.decoder(
@@ -161,9 +176,9 @@ class SSVAE(pl.LightningModule):
         )
         x_hat = x_hat.log_softmax(dim=2)
 
-        return x_hat, y_hat, z_mu, z_logvar
+        return x_hat, y_hat, alpha
 
-    def lossfn(self, x_hat, x_true, y_hat, y_true, z_mu, z_logvar):
+    def lossfn(self, x_hat, x_true, y_hat, y_true, alpha):
         """
         Loss function for the model.
 
@@ -176,7 +191,9 @@ class SSVAE(pl.LightningModule):
         """
 
         # Category Loss
-        catloss = nn.functional.cross_entropy(input=y_hat, target=y_true)
+        catloss = nn.functional.cross_entropy(
+            input=y_hat, target=y_true
+        )
 
         # Reconstruction Loss
         x_hat = x_hat.permute(0, 2, 1)  # (batch_size, vocab_size, seq_len)
@@ -184,9 +201,7 @@ class SSVAE(pl.LightningModule):
             input=x_hat, target=x_true
         )  # (batch_size, seq_len)
 
-        kldloss = torch.mean(
-            -0.5 * torch.sum(1 + z_logvar - z_mu.pow(2) - z_logvar.exp(), dim=1), dim=0
-        )
+        kldloss = self.lambd.lossfn(alpha, reduce=False)
 
         # ´loss=recons_loss+0.1*cat_loss+epoch*0.001*kl_loss
 
@@ -203,16 +218,20 @@ class SSVAE(pl.LightningModule):
         x = batch["x"]
         x_true = batch["x_true"]
         y_true = batch["y_true"]
+        y_true = y_true.type(torch.LongTensor)
+        y_true = y_true.to(self.device)
 
         # Forward pass
-        x_hat, y_hat, z_mu, z_logvar = self.forward(x)
+        x_hat, y_hat, alpha = self.forward(x)
 
         # Loss
         reconloss, catloss, kldloss = self.lossfn(
-            x_hat, x_true, y_hat, y_true, z_mu, z_logvar
+            x_hat, x_true, y_hat, y_true, alpha
         )
+        loss = reconloss + self.nu1 * catloss + (self.nu2 * kldloss).mean()
 
-        loss = reconloss + 0.1 * catloss + self.current_epoch * 0.001 * kldloss
+        # Batch mean
+        loss = loss.mean()
 
         acc_seq = self.accuracy_sequence(x_hat, x_true)
         acc_labels = self.accuracy_label(y_hat, y_true)
@@ -245,8 +264,9 @@ class SSVAE(pl.LightningModule):
         """
         Measures the distance between the true labels and the predicted labels.
         """
-        distance = torch.sum(torch.abs(y_hat - y), dim=1)
-        return distance
+        y_hat = torch.argmax(y_hat, dim=1)
+        accuracy = torch.sum(y_hat == y, dim=0) / y.size(0)
+        return accuracy
 
     def accuracy_sequence(self, x_hat, x):
         """
@@ -265,5 +285,5 @@ class SSVAE(pl.LightningModule):
         optimizer : torch.optim.Optimizer
             The optimizer.
         """
-        optimizer = torch.optim.SGD(self.parameters(), lr=self.learning_rate)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
         return optimizer

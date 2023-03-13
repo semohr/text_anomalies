@@ -30,15 +30,17 @@ data
         └── corpus.htm
 ```
 
-Afterwards to preprocess the data run:
+Afterwards you can create a datamodule and it should load the data.
 
-```bash
-python scripts/preprocess.py
+```
+from text_anomalies.doec import DOECDataModule
+
+dm = DOECDataModule()
 ```
 
-This should create a `data/doec_processed` folder with the preprocessed data in parquet format. The data can be loaded using the `DOEC` class in `text_anomalies.dataloader`. Or just using `pandas.read_parquet`.
+## Results
 
-To get started with the model you can have a look at the `notebooks/DOEC.ipynb` notebook. This notebook contains the code to train the model and run some light analysis.
+Clustering results are available as csv files in the `data` folder. See `data/doec/clusters_500.csv` for the clusters. The resulting two dimensional reduction is also available as `data/tsne_results_500.npy`. The results of the reconstruction loss are also available as `data/reconstruction_outliers.csv`.
 
 ## Orientation
 
@@ -50,7 +52,9 @@ The project is structured as follows:
 │   │   ├── raw # folder for raw data
 │   │   ├── tokenizer # folder for tokenizer
 │   │   └── doec.parquet # preprocessed data
-│   └── models # folder for the pretrained models
+│   ├── models # folder for the pretrained models
+│   ├── tsne_results.npy # tsne results
+│   └── clusers_500.csv # clusters in readable format
 ├── text_anomalies # folder for source code
 │   ├── doec # code for everything data related
 │   └── models # code for the torch modules

@@ -37,7 +37,7 @@ class Decoder(pl.LightningModule):
             batch_first=True,
             num_layers=self.num_layers,
             bidirectional=bool(bidirectional),
-            dropout=0.1,
+            dropout=0.25,
         )
         self.output = nn.Sequential(
             nn.Linear(self.hidden_size * 2, self.hidden_size),
@@ -45,15 +45,6 @@ class Decoder(pl.LightningModule):
             nn.Linear(self.hidden_size, self.vocab_size),
         )
 
-        # Initialize the weights
-        torch.nn.init.xavier_uniform_(self.latent_to_hidden.weight)
-        for name, param in self.rnn.named_parameters():
-            if "weight" in name:
-                torch.nn.init.xavier_uniform_(param)
-
-        for name, param in self.output.named_parameters():
-            if "weight" in name:
-                torch.nn.init.xavier_uniform_(param)
 
     def forward(self, z, seq_len):
         """
@@ -81,7 +72,8 @@ class Decoder(pl.LightningModule):
             (z.shape[0], seq_len, self.embedding_size), device=self.device
         )  # (batch_size, seq_len, vocab_size )
         output = self.rnn(input, (hidden,state))
-
         x_hat = self.output(output[0])
+        # Norm only the vocab dimension
+        # Batch, seq, vocab
 
         return x_hat

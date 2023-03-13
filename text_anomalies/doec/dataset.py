@@ -28,7 +28,7 @@ class DOECDataset(Dataset):
         # One hot from title_id
         class_idx = int(row["title_id"])
 
-        class_idx = torch.tensor(class_idx, dtype=torch.int16)
+        class_idx = torch.tensor(class_idx, dtype=torch.long)
 
         return {
             "x": row["text"],

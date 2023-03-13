@@ -111,7 +111,9 @@ class DOEC_raw_parser:
         if idno:
             idno = idno.text
 
-        title = bs.find("title")
+        title = bs.find("sourcedesc").find("title")
+        if not title:
+            title = bs.find("title")
         if title:
             title = title.text
 

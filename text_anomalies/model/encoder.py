@@ -23,7 +23,7 @@ class Encoder(pl.LightningModule):
             batch_first=True,
             num_layers=self.num_layers,
             bidirectional=bool(bidirectional),
-            dropout=0.1,
+            dropout=0.25,
         )
 
     def forward(self, x):
